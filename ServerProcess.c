@@ -100,6 +100,9 @@ int receiveMessage() {
          int i = 0;
          for(i = 11; i < PACKET_SIZE; i++) {
             putc(buffer[i], of);
+            if(c == '\0') {
+               c = ' ';
+            }
             c = buffer[i];
          }
          if((sendto(serverSocket, buffer, PACKET_SIZE, 0, (struct sockaddr *) &clientAddr, cLength)) == -1) {
