@@ -102,8 +102,8 @@ int createPacket() {
       // 100 bytes reached, packet is ready to be sent
       if(numCharsRead == 116) {
          printf("Finished filling packet %d.\n", packetNumber);
-         printf("\nMessage reads:\n%s(%lu bytes).", msg, sizeof(msg));
-         printf("\n\nNow sending through Gremlin...\n");
+         printf("Message reads:\n%s(%lu bytes).", msg, sizeof(msg));
+         printf("\nNow sending through Gremlin...\n");
          int val = gremlin(msg);
          if(val == 1) {
             printf("TimeOut! The packet has been resent.\n");
@@ -191,7 +191,7 @@ int readFile() {
    
    // Prints file name and file size to screen
    printf("\nFile name: %s\n", FILENAME);
-   printf("File size: %d\n\n", ((intmax_t)fileStatus.st_size));
+   printf("File size: %d\n\n\n", ((intmax_t)fileStatus.st_size));
    f = fopen(FILENAME, "r"); // opens file
    char *buffer = (char *)malloc(fileStatus.st_size + 1);
 

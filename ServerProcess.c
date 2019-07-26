@@ -96,16 +96,11 @@ int receiveMessage() {
       passed = calculateChecksum(buffer);
       if(passed == 1) {
          printf("The packet was valid!\n");
-         // printf("Message reads:\n%s(%lu bytes).", buffer, sizeof(buffer));
+         printf("Message reads:\n%s(%lu bytes).", buffer, sizeof(buffer));
          int i = 0;
          for(i = 11; i < PACKET_SIZE; i++) {
             putc(buffer[i], of);
             c = buffer[i];
-            /*if (buffer[i] == EOF) {
-               break;
-            } else {
-               c = buffer[i];
-            }*/
          }
          if((sendto(serverSocket, buffer, PACKET_SIZE, 0, (struct sockaddr *) &clientAddr, cLength)) == -1) {
             errx(1, "Error sending message!!!");
@@ -146,21 +141,22 @@ int main() {
    }
    
    fseek(of, 0L, SEEK_END);
-   int size = ftell(of);
    fseek(of, 0L, SEEK_SET);
-   printf("\n\nData from file:\n");
+   printf("\n\n\nData from file:\n");
    
-   char oMsg[1024];
+   char oMsg[9999];
    int i = 0;
    
-   printf("\n");
    while ((c = fgetc(of)) != '*') {
+      if(c == '\0') {
+         c = ' ';
+      }
       oMsg[i] = c;
       i++;
    }
  
    
-   printf("\n\nThe output file contains: \n%s\n\n", oMsg); // formatting
+   printf("\nThe last packet contains: \n%s\n\n", oMsg); // formatting
    fclose(of); // closes file
 
    return 0;
