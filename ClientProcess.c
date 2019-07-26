@@ -21,6 +21,7 @@ struct sockaddr_in serverAddr;
 socklen_t addressSize;
 struct stat fileStatus;
 int packetNumber;
+int damage;
 struct hostent *hp;
 char serverIP;
 struct in_addr ip;
@@ -28,7 +29,15 @@ struct in_addr ip;
 /*---- Connects to the Server ----*/
 int serverConnect() {
    printf("Requesting Server authentication...");
+   
+   bzero((char *) &serverAddr, addressSize);
+   
    clientSocket = socket(PF_INET, SOCK_DGRAM, 0); // Create the socket with UDP
+   
+   // Configure Server address settings
+   serverAddr.sin_family = AF_INET; // Set address family to internet
+   serverAddr.sin_port = htons(10041); // Set port number using htons for correct byte order
+   serverAddr.sin_addr.s_addr = htonl(INADDR_ANY); // Set IP address to localhost
    
    // Get desired IP from user
    printf("\nPlease enter the desired IP to connect to: ");
@@ -43,30 +52,10 @@ int serverConnect() {
    if((hp = gethostbyaddr((const void *)&ip, sizeof(ip), AF_INET)) == NULL) {
       errx(1, "No name associated with %s", ipstr);
    }
-   
-   // Timer struct & setting socket options
-   struct timeval tv;
-   tv.tv_sec = 0;
-   tv.tv_usec = 20000;
-   setsockopt(clientSocket, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(struct timeval));
-
-   // Configure Server address settings
-   serverAddr.sin_family = AF_INET; // Set address family to internet
-   serverAddr.sin_port = htons(10042); // Set port number using htons for correct byte order
-   serverAddr.sin_addr.s_addr = htonl(INADDR_ANY); // Set IP address to localhost
-   memset(serverAddr.sin_zero, '\0', sizeof(serverAddr.sin_zero)); // set padding bits to 0
 
 	// Connect the socket to the server
    addressSize = sizeof(serverAddr);
    bcopy(hp->h_addr, &(serverAddr.sin_addr), hp->h_length);
-   bzero((char *) &serverAddr, addressSize);
-   if(connect(clientSocket, (struct sockaddr *) &serverAddr, addressSize) < 0) {
-      errx(1, "Error connecting to the server!!!!");
-   }
-
-   if(bind(clientSocket, (struct sockaddr *)&serverAddr, addressSize) < 0) {
-      errx(1, "Error binding the socket!!!!");
-   }
 
    // Prints after connected to the server
    printf("\nAuthenticated by Server!\n");
@@ -118,12 +107,12 @@ int createPacket() {
          int val = gremlin(msg);
          if(val == 1) {
             printf("TimeOut! The packet has been resent.\n");
-            send(clientSocket, msg, PACKET_SIZE, 0);
+            sendto(clientSocket, msg, PACKET_SIZE, 0, (const struct sockaddr *) &serverAddr, sizeof(serverAddr));
          } 
          else {
-            send(clientSocket, msg, PACKET_SIZE, 0);
+            sendto(clientSocket, msg, PACKET_SIZE, 0, (const struct sockaddr *) &serverAddr, sizeof(serverAddr));
          }
-         printf("Packet %d sent!\n\n\n", packetNumber);
+         printf("Packet %d sent!\n\n", packetNumber);
          
          numCharsRead = 0;
          bufferPosition = 11;
@@ -131,10 +120,10 @@ int createPacket() {
          recvfrom(clientSocket, msg, PACKET_SIZE, 0, (struct sockaddr *) &serverAddr, &addressSize);
          
          // Sequence number not correct, packet is corrupted
-         while(msg[0] == '1') {
+         while(msg[10] == 'N') {
             packetNumber++;
-            printf("\nCorrupted packet caught!\n");
-            msg[0] = '0';
+            printf("Corrupted packet caught!\n");
+            msg[0] = seqNum;
             msg[1] = '3';
             msg[2] = '3';
             msg[3] = '3';
@@ -151,13 +140,18 @@ int createPacket() {
             printf("Message reads:\n%s(%lu bytes).\n", msg, sizeof(msg));
             printf("Now sending through Gremlin...\n");
             gremlin(msg);
-            send(clientSocket, msg, PACKET_SIZE, 0);
+            sendto(clientSocket, msg, PACKET_SIZE, 0, (const struct sockaddr *) &serverAddr, sizeof(serverAddr));
             printf("Packet %d sent!\n\n\n", packetNumber);
             
             // Receives packet and increases number of packets
-            recv(clientSocket, msg, PACKET_SIZE, 0);
+            recvfrom(clientSocket, msg, PACKET_SIZE, 0, (struct sockaddr *) &serverAddr, &addressSize);
          }
          packetNumber++;
+      }
+      if(seqNum == '0') {
+         seqNum = '1';
+      } else {
+         seqNum = '0';
       }
    }
    
@@ -178,7 +172,7 @@ int createPacket() {
          printf("There is not enough data to completely fill the packet!\n");
          printf("Inserted %d null characters to pad the packet...\n", nullCharsCount);
          printf("The last packet reads:\n");
-         send(clientSocket, msg, PACKET_SIZE, 0);
+         sendto(clientSocket, msg, PACKET_SIZE, 0, (const struct sockaddr *) &serverAddr, sizeof(serverAddr));
          printf(msg);
          printf("\nPacket %d sent!\n\n\n", packetNumber);
       }
@@ -197,7 +191,7 @@ int readFile() {
    
    // Prints file name and file size to screen
    printf("\nFile name: %s\n", FILENAME);
-   printf("File size: %9jd\n\n", ((intmax_t)fileStatus.st_size));
+   printf("File size: %d\n\n", ((intmax_t)fileStatus.st_size));
    f = fopen(FILENAME, "r"); // opens file
    char *buffer = (char *)malloc(fileStatus.st_size + 1);
 
@@ -218,21 +212,24 @@ int gremlin(char data[]) {
    // Variable initializations
    int timeout = rand() % 10;
    int amount = rand() % 10;
+   int val = rand() % 10;
    
-   if(amount < 7) {
-      data[1] = '5';
-      printf("One bit has been changed...\n");
-   } 
-   else if(7 <= amount < 9) {
-      data[1] = '5';
-      data[2] = '5';
-      printf("Two bits have been changed...\n");
-   }
-   else {
-      data[1] = '5';
-      data[2] = '5';
-      data[3] = '5';
-      printf("Three bits have been changed...\n");
+   if(damage > val) {
+      if(amount < 7) {
+         data[1] = '5';
+         printf("One bit has been changed...\n");
+      } 
+      else if(7 <= amount < 9) {
+         data[1] = '5';
+         data[2] = '5';
+         printf("Two bits have been changed...\n");
+      }
+      else {
+         data[1] = '5';
+         data[2] = '5';
+         data[3] = '5';
+         printf("Three bits have been changed...\n");
+      }
    }
    
    if(timeout <= 2) {
@@ -244,7 +241,13 @@ int gremlin(char data[]) {
 /*---- Main function ----*/
 int main() {
    serverConnect();
+   
+   printf("The packet loss value is .2\n");
+   printf("Please enter the amount of damage (0 - 10): ");
+   scanf("%d", &damage);
+   
    readFile(); // Read file
+   
 
    return 0;
 }

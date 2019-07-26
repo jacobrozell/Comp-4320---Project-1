@@ -21,34 +21,27 @@ socklen_t addressSize;
 socklen_t cLength = sizeof(clientAddr);
 
 /*---- Connects to the Client ----*/
-int clientConnect() {
-   serverSocket = socket(PF_INET, SOCK_DGRAM, 0); // Creates socket with UDP
-   
-   bzero((char *) &serverAddr, sizeof(serverAddr)); // Clear address structure
+int clientConnect() {   
 
-   // Configure Client address settings
-   serverAddr.sin_family = AF_INET; // Set address family to internet
-   serverAddr.sin_port = htons(10042); // Set port number using htons for correct byte order
-   serverAddr.sin_addr.s_addr = htonl(INADDR_ANY); // automatically filled with current host's IP address
-   memset(serverAddr.sin_zero, '\0', sizeof(serverAddr.sin_zero)); // Set padding bits to 0
-
-   // Bind the address to the socket
-   bind(serverSocket, (struct sockaddr *) &serverAddr, sizeof(serverAddr));
-
-   // recvfrom(serverSocket, buffer, 1024, 0, (struct sockaddr *) &clientAddr, &cLength); -- causes the program to not have any output, even with print statements included
-   
-   // Listen on the socket; max connection requests in the queue == 5
-   if(listen(serverSocket, 5) == 0) {
-      printf("Listening...\n");
-   } else {
-      printf("Error!\n");
+   if((serverSocket = socket(PF_INET, SOCK_DGRAM, 0)) == -1) {
+      errx(1, "Error creating the socket!!");
       exit(EXIT_FAILURE);
    }
    
+   // Configure Server address settings
+   serverAddr.sin_family = AF_INET; // Set address family to internet
+   serverAddr.sin_port = htons(10041); // Set port number using htons for correct byte order
+   serverAddr.sin_addr.s_addr = htonl(INADDR_ANY); // automatically filled with current host's IP address
+   
+   // Bind the address to the socket
+   if((bind(serverSocket, (struct sockaddr *) &serverAddr, sizeof(serverAddr))) == -1) {
+      errx(1, "Error binding the address to the socket!!!");
+      exit(EXIT_FAILURE);
+   }
+
+   
 	// Creates a new socket for the incoming connection and connect them
    addressSize = sizeof(serverStorage);
-   newSocket = accept(serverSocket, (struct sockaddr *) &serverStorage, &addressSize);
-   connect(newSocket, (struct sockaddr *) &serverStorage, addressSize);
    
    return 0;
 }
@@ -60,14 +53,15 @@ int calculateChecksum(char packet[]) {
    int i;
    
    // Calculates the sum
-   for(i = 1; i < 11; i++) {
+   for(i = 1; i < 10; i++) {
       sum += packet[i];
    }
    
    // Returns true (1) if checksum contains all 3's; otherwise, returns false (0)
    if(sum % 3 == 0) {
       return 1;
-   } else {
+   } 
+   else {
       return 0;
    }
 }
@@ -86,29 +80,48 @@ int receiveMessage() {
       exit(1);
    }
    
-   for(;;) {
-      int passed;
-      recv(newSocket, buffer, PACKET_SIZE, 0);
+   int n = 240 * 1024;
+   setsockopt(serverSocket, SOL_SOCKET, SO_RCVBUF, &n, sizeof(n));
    
-      printf("\nReceived packet %d...\n", packetNumber);
+   while(c != '*') {
+      int passed;
+      if (recvfrom(serverSocket, buffer, PACKET_SIZE, 0, (struct sockaddr *) &clientAddr, &cLength) == -1) {
+         errx(1, "Error receiving message!!!");
+         exit(EXIT_FAILURE);
+      }
+      
+      printf("\n\nReceived packet %d...\n", packetNumber);
       packetNumber++;
       printf("The packet is being checked for errors...\n");
       passed = calculateChecksum(buffer);
       if(passed == 1) {
          printf("The packet was valid!\n");
-         int i;
+         // printf("Message reads:\n%s(%lu bytes).", buffer, sizeof(buffer));
+         int i = 0;
          for(i = 11; i < PACKET_SIZE; i++) {
-            fputc(buffer[i], of);
+            putc(buffer[i], of);
             c = buffer[i];
+            /*if (buffer[i] == EOF) {
+               break;
+            } else {
+               c = buffer[i];
+            }*/
          }
-      
-         send(newSocket, buffer, PACKET_SIZE, 0);
-      } else { // Packet corrupted
+         if((sendto(serverSocket, buffer, PACKET_SIZE, 0, (struct sockaddr *) &clientAddr, cLength)) == -1) {
+            errx(1, "Error sending message!!!");
+            exit(EXIT_FAILURE);
+         }
+      } 
+      else { // Packet corrupted
          printf("The packet was corrupted!\n");
-         buffer[0] = '1';
-         send(newSocket, buffer, PACKET_SIZE, 0);
+         printf("\nMessage reads:\n%s(%lu bytes).", buffer, sizeof(buffer));
+         buffer[10] = 'N';
+         if((sendto(serverSocket, buffer, PACKET_SIZE, 0, (struct sockaddr *) &clientAddr, cLength)) == -1) {
+            errx(1, "Error sending message!!!");
+            exit(EXIT_FAILURE);
+         }
       }
-      sleep(5);
+      sleep(1);
    }
    
    fclose(of); // Close file
@@ -135,15 +148,19 @@ int main() {
    fseek(of, 0L, SEEK_END);
    int size = ftell(of);
    fseek(of, 0L, SEEK_SET);
-   printf("\n\nData from file: \n");
- 
-   // Prints all data in file
-   while((c = fgetc(of)) != EOF) {
-      if(pos < size - 1) {
-         printf("%c", c);
-      }
-      pos++;
+   printf("\n\nData from file:\n");
+   
+   char oMsg[1024];
+   int i = 0;
+   
+   printf("\n");
+   while ((c = fgetc(of)) != '*') {
+      oMsg[i] = c;
+      i++;
    }
+ 
+   
+   printf("\n\nThe output file contains: \n%s\n\n", oMsg); // formatting
    fclose(of); // closes file
 
    return 0;
